@@ -26,6 +26,7 @@
  *
  */
 
+const Errors = require('./Errors');
 const WebServer = require('./WebServer');
 
 module.exports = {
@@ -48,4 +49,5 @@ module.exports = {
     console.log('[boilerplate-boilerplate-webserver] Start handler.');
     composer.container.resolve('webServer').startServer();
   },
+  Errors,
 };
