@@ -26,10 +26,26 @@
  *
  */
 
-const injector = require('./injector');
-const Errors = require('./Errors');
+const INJECTED_DEPENDENCY_NAME = 'webServer';
 
-module.exports = {
-  injector,
-  Errors,
-};
+const WebServer = require('./WebServer');
+
+module.exports = (composer, forwardOpts) =>
+  composer
+    .addStartHandler({
+      [INJECTED_DEPENDENCY_NAME]: ({ dependency }) => {
+        composer.log('[boilerplate-boilerplate-webserver] Start handler.');
+        dependency.startServer();
+      },
+    })
+    .registerDependency({
+      [INJECTED_DEPENDENCY_NAME]: inject =>
+        inject
+          .asFunction(WebServer)
+          .inject(() => ({
+            config: { defaultOutputContentType: 'text/html', ...forwardOpts.webServerConfig },
+            enhanceRequestContext: forwardOpts.enhanceRequestContext,
+            webServerRequestHandle: forwardOpts.webServerRequestHandle,
+          }))
+          .singleton(),
+    });

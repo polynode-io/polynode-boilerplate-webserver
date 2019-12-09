@@ -23,7 +23,6 @@
  *
  * @flow
  * @format
- *
  */
 
 const Constants = {
@@ -45,11 +44,14 @@ const RequestContext = function({
   getServerHandler: () => {},
   routeOptions: { responseContentType?: string },
 }) {
-  log.debug('NEW REQ CONTEXT. ');
   this.getRequest = getRequest;
   this.getResponse = getResponse;
   this.next = next;
-  this.log = log;
+  this.logger = log.child({ scope: 'polynode-webserver-context' }, true);
+  this.log = (obj, message, logLevel = 'trace') =>
+    this.logger[logLevel]({ ...obj, req: this.getRequest(), res: this.getResponse() }, message);
+
+  this.log({}, 'inside RequestContext constructor.');
 
   this.defaultRouteOptions = {};
 
@@ -61,6 +63,7 @@ const RequestContext = function({
   ) => {
     const contentType =
       routeOptions.responseContentType || getServerHandler().getConfig().defaultOutputContentType;
+
     return getServerHandler().sendResponse({
       httpStatusCode,
       outputObj,
