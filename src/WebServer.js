@@ -68,7 +68,7 @@ const addRequestContext = ({
     res: express$Response,
     next: express$NextFunction
   ): void => {
-    log.trace('*** Request starts addRequestContext');
+    log.trace({}, 'Request starts addRequestContext'); // '*** t');
     req._context = new RequestContext({
       getRequest: (): express$Request => req,
       getResponse: (): express$Response => res,
@@ -77,7 +77,8 @@ const addRequestContext = ({
       routeOptions,
       log,
     });
-    log.trace('request context has been created');
+    req._context.log({}, 'Request Context has been created.');
+
     req._context.next();
   };
 };
@@ -88,9 +89,8 @@ const getErrorHandler = ({ log }: DependencyContainer): express$Middleware => (
   res: express$Response,
   next: express$NextFunction
 ) => {
-  console.log('IN getErrorHandler!!!!!');
   req._context.resolveWithError(err);
-  log.trace({ message: 'Request error: ' + err.message, error: err });
+  req._context.log({ err }, 'Request error: ' + err.message, 'debug');
 };
 
 const addContextToRequestHandler = handler => {
@@ -139,6 +139,7 @@ const bindEnhancedRouteToExpressRouter = ({
   );
 
   log.trace(
+    {},
     'bindEnhancedRouteToExpressRouter: ',
     uri,
     'getServerHandler(): ',
@@ -245,8 +246,7 @@ const sendResponse = ({
   responseContentType: string,
   outputObj: any,
 }): void => {
-  log.trace(`sendResponse(HTTP ${httpStatusCode}): SEND OUTPUT`);
-  log.trace(outputObj);
+  log({ msg: `sendResponse(HTTP ${httpStatusCode}): SEND OUTPUT`, outputObj });
   res.setHeader('Content-Type', responseContentType);
   res
     .status(httpStatusCode)
@@ -286,7 +286,7 @@ module.exports = (depsContainer: DependencyContainer) => {
     getServer: () => server,
     startServer: async () => {
       await serverListen(server, config.port);
-      log.debug('*** Server listening in port: ' + config.port);
+      log.debug({}, '*** Server listening in port: ' + config.port);
       return true;
     },
     sendResponse,
