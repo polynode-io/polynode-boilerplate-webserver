@@ -23,6 +23,7 @@
  *
  * @flow
  * @format
+ *
  */
 
 const Constants = {
@@ -76,8 +77,7 @@ const RequestContext = function({
   this.resolveWithError = (err: ApplicationErrorType) => {
     console.log('resolveWithError');
     const httpStatusCode = err.httpStatusCode || Constants.DEFAULT_ERROR_HTTP_STATUS_CODE;
-    const outputObj =
-      'safeDetails' in err && err.safeDetails != null ? err.safeDetails : { internalError: true };
+    const outputObj = 'expose' in err && err.expose != null ? err.expose : { internalError: true };
 
     return getServerHandler().sendResponse({
       httpStatusCode,
@@ -91,6 +91,32 @@ const RequestContext = function({
   this.reject = (err: ApplicationErrorType) => this.next(err);
 
   this.getServerDependencies = () => getServerHandler().getDepsContainer();
+
+  const getRequestInputData = (jsonSchema: {}, sourceObj: {}) =>
+    Object.keys(params).reduce((obj, paramName) => {
+      const paramValue = sourceObj[paramName];
+      const paramValidation = params[paramName];
+
+      const { validationResult, transformResult } = Validation.processSingleParam(
+        paramName,
+        paramValue,
+        paramValidation
+      );
+
+      if (validationResult === false) {
+        this.log('ValidationResult = false');
+
+        throw new ValidationError(`getRequestInputData() failed validating param: ${paramName}`, {
+          param: paramName,
+        });
+      }
+
+      return { ...obj, [paramName]: transformResult };
+    }, {});
+
+  this.getPostData = params => getRequestInputData(params, this.getRequest().body);
+
+  this.getReqParams = params => getRequestInputData(params, this.getRequest().params);
 
   getServerHandler()
     .getDepsContainer()

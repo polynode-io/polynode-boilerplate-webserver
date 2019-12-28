@@ -27,36 +27,42 @@
  */
 
 class HTTPError extends Error {
-  constructor(message, httpStatusCode, safeDetails = null) {
+  constructor(message, httpStatusCode, expose = null) {
     super(message);
     this.name = this.constructor.name;
     this.httpStatusCode = httpStatusCode;
-    this.safeDetails = safeDetails;
+    this.expose = expose;
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
 class BadRequestError extends HTTPError {
-  constructor(message, details = null) {
-    super(message, 400, details);
+  constructor(message, expose = null) {
+    super(message, 400, expose);
   }
 }
 
 class UnauthorizedError extends HTTPError {
-  constructor(message, details = null) {
-    super(message, 401, details);
+  constructor(message, expose = null) {
+    super(message, 401, expose);
   }
 }
 
 class ForbiddenError extends HTTPError {
-  constructor(message, details = null) {
-    super(message, 403, details);
+  constructor(message, expose = null) {
+    super(message, 403, expose);
   }
 }
 
 class InternalServerError extends HTTPError {
-  constructor(message, details = null) {
-    super(message, 500, details);
+  constructor(message, expose = null) {
+    super(message, 500, expose);
+  }
+}
+
+class UnprocessableEntityError extends HTTPError {
+  constructor(message, expose = null) {
+    super(message, 422, expose);
   }
 }
 
@@ -66,4 +72,5 @@ module.exports = {
   UnauthorizedError,
   ForbiddenError,
   InternalServerError,
+  UnprocessableEntityError,
 };
