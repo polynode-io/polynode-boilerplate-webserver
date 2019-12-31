@@ -298,9 +298,9 @@ module.exports = (depsContainer: DependencyContainer) => {
       uncompiledJsonSchema: {},
       controllerCallback: (context: {}, inputParams: Object) => any
     ) => {
-      console.log('Inside validateBody');
+      log.trace({}, 'Inside validateBody');
       const endpointValidator: EndpointValidatorType = ajv.compile(uncompiledJsonSchema);
-      console.log('after endpointValidator');
+      log.trace({}, 'after endpointValidator');
       try {
         return async context => {
           const reqBody = context.getRequest().body;
@@ -308,7 +308,7 @@ module.exports = (depsContainer: DependencyContainer) => {
             const validData: any = await endpointValidator(reqBody);
             return controllerCallback(context, validData);
           } catch (err) {
-            console.log('Validation errors:', err);
+            log.trace({ err }, 'Validation errors:');
             return context.reject(
               new UnprocessableEntityError('Invalid params', {
                 type: 'ValidationError',
@@ -318,7 +318,7 @@ module.exports = (depsContainer: DependencyContainer) => {
           }
         };
       } catch (err) {
-        console.log('validateBody.Exception: ', err);
+        log.trace({ err }, 'validateBody.Exception');
       }
     },
     sendResponse,

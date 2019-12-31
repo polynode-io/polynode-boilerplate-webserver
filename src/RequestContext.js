@@ -75,7 +75,7 @@ const RequestContext = function({
   };
 
   this.resolveWithError = (err: ApplicationErrorType) => {
-    console.log('resolveWithError');
+    this.log('resolveWithError');
     const httpStatusCode = err.httpStatusCode || Constants.DEFAULT_ERROR_HTTP_STATUS_CODE;
     const outputObj = 'expose' in err && err.expose != null ? err.expose : { internalError: true };
 
