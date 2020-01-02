@@ -286,7 +286,7 @@ module.exports = (depsContainer: DependencyContainer) => {
 
   const server = http.createServer(expressHandler);
 
-  return {
+  const instance = {
     getMainRouter: () => mainRouter.router,
     getServer: () => server,
     startServer: async () => {
@@ -325,4 +325,14 @@ module.exports = (depsContainer: DependencyContainer) => {
     getConfig: () => config,
     getDepsContainer: () => depsContainer,
   };
+
+  if (depsContainer.enhanceServerInstance) {
+    // @todo: we need to find a way to affect getServerHandlerForContext() behavior efficiently
+    console.log('enhacing server instance');
+    depsContainer.enhanceServerInstance.call(instance);
+  }
+
+  console.log('final instance is. ', instance);
+
+  return instance;
 };

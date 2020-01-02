@@ -44,7 +44,7 @@ const RequestContext = function({
   next: () => () => void,
   getServerHandler: () => {},
   routeOptions: { responseContentType?: string },
-}) {
+}): RequestContextType {
   this.getRequest = getRequest;
   this.getResponse = getResponse;
   this.next = next;
@@ -90,33 +90,9 @@ const RequestContext = function({
 
   this.reject = (err: ApplicationErrorType) => this.next(err);
 
+  this.getServerHandler = () => getServerHandler();
+
   this.getServerDependencies = () => getServerHandler().getDepsContainer();
-
-  const getRequestInputData = (jsonSchema: {}, sourceObj: {}) =>
-    Object.keys(params).reduce((obj, paramName) => {
-      const paramValue = sourceObj[paramName];
-      const paramValidation = params[paramName];
-
-      const { validationResult, transformResult } = Validation.processSingleParam(
-        paramName,
-        paramValue,
-        paramValidation
-      );
-
-      if (validationResult === false) {
-        this.log('ValidationResult = false');
-
-        throw new ValidationError(`getRequestInputData() failed validating param: ${paramName}`, {
-          param: paramName,
-        });
-      }
-
-      return { ...obj, [paramName]: transformResult };
-    }, {});
-
-  this.getPostData = params => getRequestInputData(params, this.getRequest().body);
-
-  this.getReqParams = params => getRequestInputData(params, this.getRequest().params);
 
   getServerHandler()
     .getDepsContainer()

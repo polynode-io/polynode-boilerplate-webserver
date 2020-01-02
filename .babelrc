@@ -1,4 +1,4 @@
 {
-  "presets": ["@babel/preset-flow", [ "@babel/preset-env", { "targets": { "node": "current" } } ] ],
-  "plugins": ["@babel/plugin-proposal-class-properties"]
+  "presets": ["@babel/preset-flow", ["optimizations", { "simplify": true }], [ "@babel/preset-env", { "targets": { "node": "current" } } ] ],
+  "plugins": ["@babel/plugin-proposal-class-properties", "groundskeeper-willie", "closure-elimination"]
 }
