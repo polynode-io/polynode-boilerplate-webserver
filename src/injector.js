@@ -26,44 +26,27 @@
  *
  */
 
-class HTTPError extends Error {
-  constructor(message, httpStatusCode, safeDetails = null) {
-    super(message);
-    this.name = this.constructor.name;
-    this.httpStatusCode = httpStatusCode;
-    this.safeDetails = safeDetails;
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
+const INJECTED_DEPENDENCY_NAME = 'webServer';
 
-class BadRequestError extends HTTPError {
-  constructor(message, details = null) {
-    super(message, 400, details);
-  }
-}
+const WebServer = require('./WebServer');
 
-class UnauthorizedError extends HTTPError {
-  constructor(message, details = null) {
-    super(message, 401, details);
-  }
-}
-
-class ForbiddenError extends HTTPError {
-  constructor(message, details = null) {
-    super(message, 403, details);
-  }
-}
-
-class InternalServerError extends HTTPError {
-  constructor(message, details = null) {
-    super(message, 500, details);
-  }
-}
-
-module.exports = {
-  HTTPError,
-  BadRequestError,
-  UnauthorizedError,
-  ForbiddenError,
-  InternalServerError,
-};
+module.exports = (composer, forwardOpts) =>
+  composer
+    .addStartHandler({
+      [INJECTED_DEPENDENCY_NAME]: ({ dependency }) => {
+        composer.log('[boilerplate-boilerplate-webserver] Start handler.');
+        dependency.startServer();
+      },
+    })
+    .registerDependency({
+      [INJECTED_DEPENDENCY_NAME]: inject =>
+        inject
+          .asFunction(WebServer)
+          .inject(() => ({
+            config: { defaultOutputContentType: 'text/html', ...forwardOpts.webServerConfig },
+            enhanceRequestContext: forwardOpts.enhanceRequestContext,
+            enhanceServerInstance: forwardOpts.enhanceServerInstance,
+            webServerRequestHandle: forwardOpts.webServerRequestHandle,
+          }))
+          .singleton(),
+    });

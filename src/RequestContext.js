@@ -44,12 +44,15 @@ const RequestContext = function({
   next: () => () => void,
   getServerHandler: () => {},
   routeOptions: { responseContentType?: string },
-}) {
-  log.debug('NEW REQ CONTEXT. ');
+}): RequestContextType {
   this.getRequest = getRequest;
   this.getResponse = getResponse;
   this.next = next;
-  this.log = log;
+  this.logger = log.child({ scope: 'polynode-webserver-context' }, true);
+  this.log = (obj, message, logLevel = 'trace') =>
+    this.logger[logLevel]({ ...obj, req: this.getRequest(), res: this.getResponse() }, message);
+
+  this.log({}, 'inside RequestContext constructor.');
 
   this.defaultRouteOptions = {};
 
@@ -61,6 +64,7 @@ const RequestContext = function({
   ) => {
     const contentType =
       routeOptions.responseContentType || getServerHandler().getConfig().defaultOutputContentType;
+
     return getServerHandler().sendResponse({
       httpStatusCode,
       outputObj,
@@ -71,10 +75,9 @@ const RequestContext = function({
   };
 
   this.resolveWithError = (err: ApplicationErrorType) => {
-    console.log('resolveWithError');
+    this.log('resolveWithError');
     const httpStatusCode = err.httpStatusCode || Constants.DEFAULT_ERROR_HTTP_STATUS_CODE;
-    const outputObj =
-      'safeDetails' in err && err.safeDetails != null ? err.safeDetails : { internalError: true };
+    const outputObj = 'expose' in err && err.expose != null ? err.expose : { internalError: true };
 
     return getServerHandler().sendResponse({
       httpStatusCode,
@@ -86,6 +89,8 @@ const RequestContext = function({
   };
 
   this.reject = (err: ApplicationErrorType) => this.next(err);
+
+  this.getServerHandler = () => getServerHandler();
 
   this.getServerDependencies = () => getServerHandler().getDepsContainer();
 

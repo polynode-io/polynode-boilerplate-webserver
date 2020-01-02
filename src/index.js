@@ -26,26 +26,10 @@
  *
  */
 
-const WebServer = require('./WebServer');
+const injector = require('./injector');
+const Errors = require('./Errors');
 
 module.exports = {
-  injector: (composer, forwardOpts) => {
-    return composer.registerDependency({
-      webServer: inject =>
-        inject
-          .asFunction(WebServer)
-          .inject(() => {
-            return {
-              config: { defaultOutputContentType: 'text/html', ...forwardOpts.webServerConfig },
-              enhanceRequestContext: forwardOpts.enhanceRequestContext,
-              webServerRequestHandle: forwardOpts.webServerRequestHandle,
-            };
-          })
-          .singleton(),
-    });
-  },
-  onStart: composer => {
-    console.log('[boilerplate-boilerplate-webserver] Start handler.');
-    composer.container.resolve('webServer').startServer();
-  },
+  injector,
+  Errors,
 };

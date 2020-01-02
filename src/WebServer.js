@@ -32,8 +32,11 @@ const Express = require('express');
 const BodyParser = require('body-parser');
 const http = require('http');
 const cors = require('cors');
+const Ajv = require('ajv');
 
 const RequestContext = require('./RequestContext');
+
+const { UnprocessableEntityError } = require('./Errors');
 
 type GenericObject = { [key: string]: any };
 
@@ -54,6 +57,10 @@ type DependencyContainer = GenericObject;
 
 type ExpressRequestWithContext = express$Request & { _context: GenericObject };
 
+type EndpointValidatorType = (body: string) => Promise<any>;
+
+const ajv = new Ajv();
+
 const addRequestContext = ({
   routeOptions,
   getServerHandler,
@@ -68,7 +75,7 @@ const addRequestContext = ({
     res: express$Response,
     next: express$NextFunction
   ): void => {
-    log.trace('*** Request starts addRequestContext');
+    log.trace({}, 'Request starts addRequestContext'); // '*** t');
     req._context = new RequestContext({
       getRequest: (): express$Request => req,
       getResponse: (): express$Response => res,
@@ -77,7 +84,8 @@ const addRequestContext = ({
       routeOptions,
       log,
     });
-    log.trace('request context has been created');
+    req._context.log({}, 'Request Context has been created.');
+
     req._context.next();
   };
 };
@@ -88,12 +96,13 @@ const getErrorHandler = ({ log }: DependencyContainer): express$Middleware => (
   res: express$Response,
   next: express$NextFunction
 ) => {
-  console.log('IN getErrorHandler!!!!!');
   req._context.resolveWithError(err);
-  log.trace({ message: 'Request error: ' + err.message, error: err });
+  req._context.log({ err }, 'Request error: ' + err.message, 'debug');
 };
 
-const addContextToRequestHandler = handler => {
+const addContextToRequestHandler = (
+  handler: (context: GenericObject) => void
+): express$Middleware => {
   return (
     req: express$Request & { _context: GenericObject },
     res: express$Response,
@@ -106,9 +115,7 @@ const addContextToRequestHandler = handler => {
 const getHandlerForMainRequest = (
   mainRequestFunction: (context: GenericObject) => void
 ): express$Middleware => {
-  return addContextToRequestHandler(async context => {
-    context.resolve(await mainRequestFunction(context));
-  });
+  return addContextToRequestHandler(mainRequestFunction);
 };
 
 const addContextToRequestHandlers = handlers => {
@@ -138,21 +145,15 @@ const bindEnhancedRouteToExpressRouter = ({
     expressRouter
   );
 
-  log.trace(
-    'bindEnhancedRouteToExpressRouter: ',
-    uri,
-    'getServerHandler(): ',
-    getServerHandler(),
-    'webServerRequestHandle:',
-    webServerRequestHandle
-  );
+  const reqHooks: {
+    pre?: Array<express$Middleware>,
+    post?: Array<express$Middleware>,
+  } = webServerRequestHandle();
 
-  const reqHandlers = webServerRequestHandle();
-
-  const requestPipe = [
+  const requestPipe: Array<string | express$Middleware> = [
     uri,
     addRequestContext({ routeOptions, getServerHandler, log }),
-    ...addContextToRequestHandlers(reqHandlers.pre),
+    ...addContextToRequestHandlers(reqHooks.pre),
     getHandlerForMainRequest(mainRequestFunction),
     getErrorHandler(getServerHandler().getDepsContainer()),
   ];
@@ -195,6 +196,7 @@ const getBypassedRouterMethods = ({
 
 const configureExpressApp = (app: express$Application<any>): void => {
   app.use(BodyParser.json());
+  //
   app.use(cors());
 };
 
@@ -245,8 +247,7 @@ const sendResponse = ({
   responseContentType: string,
   outputObj: any,
 }): void => {
-  log.trace(`sendResponse(HTTP ${httpStatusCode}): SEND OUTPUT`);
-  log.trace(outputObj);
+  log({ outputObj }, `sendResponse(HTTP ${httpStatusCode}): SEND OUTPUT`);
   res.setHeader('Content-Type', responseContentType);
   res
     .status(httpStatusCode)
@@ -256,9 +257,10 @@ const sendResponse = ({
 
 module.exports = (depsContainer: DependencyContainer) => {
   const log = depsContainer.log;
-  log.info('[boilerplate-webserver] ##### Initializing... ');
+  log.info({}, '[boilerplate-webserver] ##### Initializing... ');
   const config = depsContainer.config;
   log.debug(
+    {},
     'web server config is: ',
     depsContainer.config,
     '.enhanceRequestContext: ',
@@ -266,11 +268,13 @@ module.exports = (depsContainer: DependencyContainer) => {
   );
 
   const expressHandler = Express();
+
   const getServerHandlerForContext = () => ({
     getConfig: () => config,
     getDepsContainer: () => depsContainer,
     sendResponse,
   });
+
   const mainRouter = createRouter({
     getServerHandler: getServerHandlerForContext,
     webServerRequestHandle: depsContainer.webServerRequestHandle,
@@ -279,18 +283,56 @@ module.exports = (depsContainer: DependencyContainer) => {
 
   configureExpressApp(expressHandler);
   configureExpressRouting(expressHandler, mainRouter);
+
   const server = http.createServer(expressHandler);
 
-  return {
+  const instance = {
     getMainRouter: () => mainRouter.router,
     getServer: () => server,
     startServer: async () => {
       await serverListen(server, config.port);
-      log.debug('*** Server listening in port: ' + config.port);
+      log.debug({}, '*** Server listening in port: ' + config.port);
       return true;
+    },
+    validateBody: (
+      uncompiledJsonSchema: {},
+      controllerCallback: (context: {}, inputParams: Object) => any
+    ) => {
+      log.trace({}, 'Inside validateBody');
+      const endpointValidator: EndpointValidatorType = ajv.compile(uncompiledJsonSchema);
+      log.trace({}, 'after endpointValidator');
+      try {
+        return async context => {
+          const reqBody = context.getRequest().body;
+          try {
+            const validData: any = await endpointValidator(reqBody);
+            return controllerCallback(context, validData);
+          } catch (err) {
+            log.trace({ err }, 'Validation errors:');
+            return context.reject(
+              new UnprocessableEntityError('Invalid params', {
+                type: 'ValidationError',
+                errors: err.errors,
+              })
+            );
+          }
+        };
+      } catch (err) {
+        log.trace({ err }, 'validateBody.Exception');
+      }
     },
     sendResponse,
     getConfig: () => config,
     getDepsContainer: () => depsContainer,
   };
+
+  if (depsContainer.enhanceServerInstance) {
+    // @todo: we need to find a way to affect getServerHandlerForContext() behavior efficiently
+    console.log('enhacing server instance');
+    depsContainer.enhanceServerInstance.call(instance);
+  }
+
+  console.log('final instance is. ', instance);
+
+  return instance;
 };
