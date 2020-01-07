@@ -1,6 +1,6 @@
 {
   "name": "polynode-boilerplate-webserver",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Webserver boilerplate for Polynode",
   "main": "build/index.js",
   "scripts": {
