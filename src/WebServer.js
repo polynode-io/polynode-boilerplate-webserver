@@ -68,6 +68,7 @@ const addRequestContext = ({
 }: {
   routeOptions: RouteOptions,
   getServerHandler: Function,
+  log: any,
 }): express$Middleware => {
   // @TODO: definir comportamientos para error o para resolver (extraer toda esa logica de context).
   return (
@@ -75,52 +76,51 @@ const addRequestContext = ({
     res: express$Response,
     next: express$NextFunction
   ): void => {
-    log.trace({}, 'Request starts addRequestContext'); // '*** t');
+    // log.trace({}, 'Request starts addRequestContext');
     req._context = new RequestContext({
-      getRequest: (): express$Request => req,
+      getRequest: (): ExpressRequestWithContext => req,
       getResponse: (): express$Response => res,
-      next: (...args): express$NextFunction => next(...args),
+      next: (...args): void => next(...args),
       getServerHandler,
       routeOptions,
       log,
     });
-    req._context.log({}, 'Request Context has been created.');
+    // req._context.log({}, 'Request Context has been created.');
 
     req._context.next();
   };
 };
 
-const getErrorHandler = ({ log }: DependencyContainer): express$Middleware => (
-  err: ApplicationErrorType,
-  req: express$Request,
-  res: express$Response,
-  next: express$NextFunction
-) => {
-  req._context.resolveWithError(err);
-  req._context.log({ err }, 'Request error: ' + err.message, 'debug');
+const getErrorHandler = ({ log }: DependencyContainer): express$Middleware => {
+  return (
+    err: ApplicationErrorType,
+    req: express$Request,
+    res: express$Response,
+    next: express$NextFunction
+  ): void => {
+    req._context.resolveWithError(err);
+    req._context.log({ err }, 'Request error: ' + err.message, 'debug');
+  };
 };
 
 const addContextToRequestHandler = (
   handler: (context: GenericObject) => void
-): express$Middleware => {
-  return (
-    req: express$Request & { _context: GenericObject },
-    res: express$Response,
-    next: express$NextFunction
-  ) => {
-    return handler(req._context);
-  };
-};
+): express$Middleware => (
+  req: ExpressRequestWithContext,
+  res: express$Response,
+  next: express$NextFunction
+): void => handler(req._context);
 
 const getHandlerForMainRequest = (
   mainRequestFunction: (context: GenericObject) => void
-): express$Middleware => {
-  return addContextToRequestHandler(mainRequestFunction);
-};
+): express$Middleware => addContextToRequestHandler(mainRequestFunction);
 
-const addContextToRequestHandlers = handlers => {
-  return handlers.map(handler => addContextToRequestHandler(handler));
-};
+const addContextToRequestHandlers = (
+  handlers: Array<express$Middleware>
+): Array<express$Middleware> =>
+  handlers.map((handler: express$Middleware): express$Middleware =>
+    addContextToRequestHandler(handler)
+  );
 
 const bindEnhancedRouteToExpressRouter = ({
   expressRouter,
@@ -150,15 +150,14 @@ const bindEnhancedRouteToExpressRouter = ({
     post?: Array<express$Middleware>,
   } = webServerRequestHandle();
 
-  const requestPipe: Array<string | express$Middleware> = [
-    uri,
+  const requestPipe: Array<express$Middleware> = [
     addRequestContext({ routeOptions, getServerHandler, log }),
-    ...addContextToRequestHandlers(reqHooks.pre),
+    ...(reqHooks.pre ? addContextToRequestHandlers(reqHooks.pre) : []),
     getHandlerForMainRequest(mainRequestFunction),
     getErrorHandler(getServerHandler().getDepsContainer()),
   ];
 
-  return requestHandlingPipe(...requestPipe);
+  return requestHandlingPipe(uri, ...requestPipe);
 };
 
 const getBypassedRouterMethods = ({
