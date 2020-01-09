@@ -32,7 +32,6 @@ const Express = require('express');
 const BodyParser = require('body-parser');
 const http = require('http');
 const cors = require('cors');
-const Ajv = require('ajv');
 
 const RequestContext = require('./RequestContext');
 
@@ -58,8 +57,6 @@ type DependencyContainer = GenericObject;
 type ExpressRequestWithContext = express$Request & { _context: GenericObject };
 
 type EndpointValidatorType = (body: string) => Promise<any>;
-
-const ajv = new Ajv();
 
 const addRequestContext = ({
   routeOptions,
@@ -292,33 +289,6 @@ module.exports = (depsContainer: DependencyContainer) => {
       await serverListen(server, config.port);
       log.debug({}, '*** Server listening in port: ' + config.port);
       return true;
-    },
-    validateBody: (
-      uncompiledJsonSchema: {},
-      controllerCallback: (context: {}, inputParams: Object) => any
-    ) => {
-      log.trace({}, 'Inside validateBody');
-      const endpointValidator: EndpointValidatorType = ajv.compile(uncompiledJsonSchema);
-      log.trace({}, 'after endpointValidator');
-      try {
-        return async context => {
-          const reqBody = context.getRequest().body;
-          try {
-            const validData: any = await endpointValidator(reqBody);
-            return controllerCallback(context, validData);
-          } catch (err) {
-            log.trace({ err }, 'Validation errors:');
-            return context.reject(
-              new UnprocessableEntityError('Invalid params', {
-                type: 'ValidationError',
-                errors: err.errors,
-              })
-            );
-          }
-        };
-      } catch (err) {
-        log.trace({ err }, 'validateBody.Exception');
-      }
     },
     sendResponse,
     getConfig: () => config,
