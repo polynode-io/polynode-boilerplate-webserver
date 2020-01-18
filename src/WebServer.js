@@ -32,7 +32,6 @@ const Express = require('express');
 const BodyParser = require('body-parser');
 const http = require('http');
 const cors = require('cors');
-const Ajv = require('ajv');
 
 const RequestContext = require('./RequestContext');
 
@@ -59,7 +58,10 @@ type ExpressRequestWithContext = express$Request & { _context: GenericObject };
 
 type EndpointValidatorType = (body: string) => Promise<any>;
 
-const ajv = new Ajv();
+type RequestHookDefinitions = {
+  pre?: Array<express$Middleware>,
+  post?: Array<express$Middleware>,
+};
 
 const addRequestContext = ({
   routeOptions,
@@ -68,6 +70,7 @@ const addRequestContext = ({
 }: {
   routeOptions: RouteOptions,
   getServerHandler: Function,
+  log: any,
 }): express$Middleware => {
   // @TODO: definir comportamientos para error o para resolver (extraer toda esa logica de context).
   return (
@@ -75,120 +78,122 @@ const addRequestContext = ({
     res: express$Response,
     next: express$NextFunction
   ): void => {
-    log.trace({}, 'Request starts addRequestContext'); // '*** t');
+    // log.trace({}, 'Request starts addRequestContext');
     req._context = new RequestContext({
-      getRequest: (): express$Request => req,
+      getRequest: (): ExpressRequestWithContext => req,
       getResponse: (): express$Response => res,
-      next: (...args): express$NextFunction => next(...args),
+      next: (...args): void => next(...args),
       getServerHandler,
       routeOptions,
       log,
     });
-    req._context.log({}, 'Request Context has been created.');
+    // req._context.log({}, 'Request Context has been created.');
 
     req._context.next();
   };
 };
 
-const getErrorHandler = ({ log }: DependencyContainer): express$Middleware => (
-  err: ApplicationErrorType,
-  req: express$Request,
-  res: express$Response,
-  next: express$NextFunction
-) => {
-  req._context.resolveWithError(err);
-  req._context.log({ err }, 'Request error: ' + err.message, 'debug');
-};
-
-const addContextToRequestHandler = (
-  handler: (context: GenericObject) => void
-): express$Middleware => {
+const getErrorHandler = ({ log }: DependencyContainer): express$Middleware => {
   return (
-    req: express$Request & { _context: GenericObject },
+    err: ApplicationErrorType,
+    req: express$Request,
     res: express$Response,
     next: express$NextFunction
-  ) => {
-    return handler(req._context);
+  ): void => {
+    req._context.resolveWithError(err);
+    req._context.log({ err }, 'Request error: ' + err.message, 'debug');
   };
 };
 
-const getHandlerForMainRequest = (
-  mainRequestFunction: (context: GenericObject) => void
-): express$Middleware => {
-  return addContextToRequestHandler(mainRequestFunction);
-};
+const getContextualisedMiddleware = (
+  handler: (context: GenericObject) => void
+): express$Middleware => (
+  req: ExpressRequestWithContext,
+  res: express$Response,
+  next: express$NextFunction
+): void => handler(req._context);
 
-const addContextToRequestHandlers = handlers => {
-  return handlers.map(handler => addContextToRequestHandler(handler));
-};
+const getContextualizedRouteMiddlewares = (
+  routeMiddlewares: Array<(context: GenericObject) => void>
+): express$Middleware => routeMiddlewares.map(mw => getContextualisedMiddleware(mw));
 
-const bindEnhancedRouteToExpressRouter = ({
-  expressRouter,
+const getEnhancedRouteMiddlewarePipe = ({
+  serverRequestHooks,
+  getServerHandler,
+  log,
+  specificRouteMiddlewares,
+}): Array<express$Middleware> => [
+  addRequestContext({ getServerHandler, log }),
+  ...(serverRequestHooks.pre ? getContextualizedRouteMiddlewares(serverRequestHooks.pre) : []),
+  ...getContextualizedRouteMiddlewares(specificRouteMiddlewares),
+  getErrorHandler(getServerHandler().getDepsContainer()),
+];
+
+const getEnhancedRouteInstance = (
   methodName,
   uri,
-  mainRequestFunction,
-  getServerHandler,
-  webServerRequestHandle,
-  routeOptions,
-  log,
-}: {
-  expressRouter: express$Router<any>,
-  methodName: express$RouteMethodType<any>,
-  uri: express$Path,
-  mainRequestFunction: ApplicationRouteFunction,
-  getServerHandler: Function,
-  webServerRequestHandle: any,
-  routeOptions: ApplicationRouteOptions,
-  log: {},
-}): express$RouteMethodType<any> => {
-  const requestHandlingPipe: express$RouteMethodType<any> = expressRouter[methodName].bind(
-    expressRouter
-  );
-
-  const reqHooks: {
-    pre?: Array<express$Middleware>,
-    post?: Array<express$Middleware>,
-  } = webServerRequestHandle();
-
-  const requestPipe: Array<string | express$Middleware> = [
+  specificRouteMiddlewares,
+  enhancedRouteHandlers,
+  { expressRouter, serverRequestHooks, getServerHandler, log }
+) => {
+  const obj = {
+    ...enhancedRouteHandlers,
+    methodName,
     uri,
-    addRequestContext({ routeOptions, getServerHandler, log }),
-    ...addContextToRequestHandlers(reqHooks.pre),
-    getHandlerForMainRequest(mainRequestFunction),
-    getErrorHandler(getServerHandler().getDepsContainer()),
-  ];
+    expressRouter,
+    serverRequestHooks,
+    getServerHandler,
 
-  return requestHandlingPipe(...requestPipe);
+    addRealExpressRoute: function(middlewares) {
+      return this.expressRouter[this.methodName].bind(this.expressRouter)(this.uri, ...middlewares);
+    },
+    resolve: async function() {
+      const middlewares = getEnhancedRouteMiddlewarePipe({
+        serverRequestHooks,
+        getServerHandler,
+        log,
+        specificRouteMiddlewares,
+      });
+
+      return this.addRealExpressRoute(middlewares);
+    },
+  };
+  return obj;
 };
 
 const getBypassedRouterMethods = ({
   expressRouter,
   getServerHandler,
-  webServerRequestHandle,
+  serverRequestHooks,
+  enhancedRouteHandlers,
   log,
 }: {
   expressRouter: express$Router<any>,
   getServerHandler: Function,
-  webServerRequestHandle: { pre: Array<Function>, post: Array<Function> },
+  serverRequestHooks: { pre: Array<Function>, post: Array<Function> },
+  enhancedRouteHandlers: {},
+  log: any,
 }): express$Router<any> => {
   const methods = ['get', 'post', 'patch', 'delete', 'put', 'all'];
 
   return methods.reduce((res, methodName) => {
     res[methodName] = (
       uri: string,
-      mainRequestFunction: ApplicationRouteFunction,
-      routeOptions: ApplicationRouteOptions = {}
-    ): express$Middleware =>
-      bindEnhancedRouteToExpressRouter({
-        expressRouter,
+      ...specificRouteMiddlewares: ApplicationRouteFunction
+    ): PolynodeEnhancedRoute => {
+      return getEnhancedRouteInstance(
         methodName,
         uri,
-        mainRequestFunction,
-        getServerHandler,
-        webServerRequestHandle,
-        routeOptions,
-        log,
-      });
+        specificRouteMiddlewares,
+        enhancedRouteHandlers,
+        {
+          getServerHandler,
+          log,
+          serverRequestHooks,
+          expressRouter,
+        }
+      );
+    };
 
     return res;
   }, {});
@@ -202,11 +207,14 @@ const configureExpressApp = (app: express$Application<any>): void => {
 
 const createRouter = ({
   getServerHandler,
-  webServerRequestHandle,
+  serverRequestHooks,
+  getEnhancedRouteHandlers,
   log,
 }: {
   getServerHandler: Function,
-  webServerRequestHandle: { pre?: Array<Function>, post?: Array<Function> },
+  serverRequestHooks: { pre?: Array<Function>, post?: Array<Function> },
+  getEnhancedRouteHandlers: () => {},
+  log: any,
 }): {
   router: express$Router<any>,
   expressRouter: express$Router<any>,
@@ -215,7 +223,8 @@ const createRouter = ({
   const router = getBypassedRouterMethods({
     expressRouter,
     getServerHandler,
-    webServerRequestHandle,
+    serverRequestHooks,
+    enhancedRouteHandlers: getEnhancedRouteHandlers(),
     log,
   });
   return { router, expressRouter };
@@ -246,6 +255,7 @@ const sendResponse = ({
   httpStatusCode: number,
   responseContentType: string,
   outputObj: any,
+  log: any,
 }): void => {
   log({ outputObj }, `sendResponse(HTTP ${httpStatusCode}): SEND OUTPUT`);
   res.setHeader('Content-Type', responseContentType);
@@ -275,9 +285,12 @@ module.exports = (depsContainer: DependencyContainer) => {
     sendResponse,
   });
 
+  const enhancedRouteHandlers = {};
+
   const mainRouter = createRouter({
     getServerHandler: getServerHandlerForContext,
-    webServerRequestHandle: depsContainer.webServerRequestHandle,
+    serverRequestHooks: depsContainer.serverRequestHooks,
+    getEnhancedRouteHandlers: () => enhancedRouteHandlers,
     log,
   });
 
@@ -294,36 +307,15 @@ module.exports = (depsContainer: DependencyContainer) => {
       log.debug({}, '*** Server listening in port: ' + config.port);
       return true;
     },
-    validateBody: (
-      uncompiledJsonSchema: {},
-      controllerCallback: (context: {}, inputParams: Object) => any
-    ) => {
-      log.trace({}, 'Inside validateBody');
-      const endpointValidator: EndpointValidatorType = ajv.compile(uncompiledJsonSchema);
-      log.trace({}, 'after endpointValidator');
-      try {
-        return async context => {
-          const reqBody = context.getRequest().body;
-          try {
-            const validData: any = await endpointValidator(reqBody);
-            return controllerCallback(context, validData);
-          } catch (err) {
-            log.trace({ err }, 'Validation errors:');
-            return context.reject(
-              new UnprocessableEntityError('Invalid params', {
-                type: 'ValidationError',
-                errors: err.errors,
-              })
-            );
-          }
-        };
-      } catch (err) {
-        log.trace({ err }, 'validateBody.Exception');
-      }
-    },
     sendResponse,
     getConfig: () => config,
     getDepsContainer: () => depsContainer,
+    registerEnhancedRouteHandlers: (newRouteHandlers: {}) => {
+      const entries = Object.entries(newRouteHandlers);
+      for (const [name, func] of entries) {
+        enhancedRouteHandlers[name] = func;
+      }
+    },
   };
 
   if (depsContainer.enhanceServerInstance) {

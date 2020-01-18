@@ -46,7 +46,7 @@ module.exports = (composer, forwardOpts) =>
             config: { defaultOutputContentType: 'text/html', ...forwardOpts.webServerConfig },
             enhanceRequestContext: forwardOpts.enhanceRequestContext,
             enhanceServerInstance: forwardOpts.enhanceServerInstance,
-            webServerRequestHandle: forwardOpts.webServerRequestHandle,
+            serverRequestHooks: forwardOpts.webServerRequestHooks,
           }))
           .singleton(),
     });
