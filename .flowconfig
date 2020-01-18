@@ -3,9 +3,7 @@
 
 [libs]
 ./src/
-
-[options]
-emoji=true
+./flow-typed/**
 
 [ignore]
 ./build/.*
@@ -13,3 +11,14 @@ emoji=true
 [lints]
 
 [strict]
+
+[options]
+emoji=true
+suppress_comment= \\(.\\|\n\\)*\\$FlowIgnore
+module.name_mapper='^definitions\/\(.*\)$' -> '<PROJECT_ROOT>/definitions/\1'
+module.name_mapper='^src\/\(.*\)$' -> '<PROJECT_ROOT>/src/\1'
+
+module.system=haste
+
+esproposal.class_static_fields=enable
+esproposal.class_instance_fields=enable
