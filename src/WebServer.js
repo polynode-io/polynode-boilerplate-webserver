@@ -152,6 +152,7 @@ const getEnhancedRouteInstance = (
     },
     setOptions: function(opts: {}) {
       this._options = { ...this._options, ...opts };
+      return this;
     },
     getOptions: function() {
       return this._options;
