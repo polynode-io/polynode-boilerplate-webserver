@@ -1,12 +1,11 @@
 {
   "name": "polynode-boilerplate-webserver",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Webserver boilerplate for Polynode",
   "main": "build/index.js",
   "scripts": {
     "build": "babel src/ -d build/",
-    "prepublish": "npm run build",
-    "postinstall": "flow-typed install",
+    "prepublish": "flow-typed install && npm run build"
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
