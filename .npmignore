@@ -1,3 +1,4 @@
+flow-typed/
 package-realDeps.json
 node_modules/
 *.lock

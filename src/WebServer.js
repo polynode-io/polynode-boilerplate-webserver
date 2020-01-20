@@ -64,8 +64,8 @@ type RequestHookDefinitions = {
 };
 
 const addRequestContext = ({
-  routeOptions,
   getServerHandler,
+  getRouteOptions,
   log,
 }: {
   routeOptions: RouteOptions,
@@ -84,7 +84,7 @@ const addRequestContext = ({
       getResponse: (): express$Response => res,
       next: (...args): void => next(...args),
       getServerHandler,
-      routeOptions,
+      routeOptions: getRouteOptions(),
       log,
     });
     // req._context.log({}, 'Request Context has been created.');
@@ -120,10 +120,12 @@ const getContextualizedRouteMiddlewares = (
 const getEnhancedRouteMiddlewarePipe = ({
   serverRequestHooks,
   getServerHandler,
+
+  getRouteOptions,
   log,
   specificRouteMiddlewares,
 }): Array<express$Middleware> => [
-  addRequestContext({ getServerHandler, log }),
+  addRequestContext({ getServerHandler, getRouteOptions, log }),
   ...(serverRequestHooks.pre ? getContextualizedRouteMiddlewares(serverRequestHooks.pre) : []),
   ...getContextualizedRouteMiddlewares(specificRouteMiddlewares),
   getErrorHandler(getServerHandler().getDepsContainer()),
@@ -143,9 +145,16 @@ const getEnhancedRouteInstance = (
     expressRouter,
     serverRequestHooks,
     getServerHandler,
+    _options: {},
 
     addRealExpressRoute: function(middlewares) {
       return this.expressRouter[this.methodName].bind(this.expressRouter)(this.uri, ...middlewares);
+    },
+    setOptions: function(opts: {}) {
+      this._options = { ...this._options, ...opts };
+    },
+    getOptions: function() {
+      return this._options;
     },
     resolve: async function() {
       const middlewares = getEnhancedRouteMiddlewarePipe({
@@ -153,6 +162,7 @@ const getEnhancedRouteInstance = (
         getServerHandler,
         log,
         specificRouteMiddlewares,
+        getRouteOptions: () => this.getOptions(),
       });
 
       return this.addRealExpressRoute(middlewares);
