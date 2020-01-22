@@ -35,7 +35,7 @@ const cors = require('cors');
 
 const RequestContext = require('./RequestContext');
 
-const { UnprocessableEntityError } = require('./Errors');
+const { NotFoundError } = require('./Errors');
 
 type GenericObject = { [key: string]: any };
 
@@ -68,7 +68,7 @@ const addRequestContext = ({
   getRouteOptions,
   log,
 }: {
-  routeOptions: RouteOptions,
+  getRouteOptions: () => RouteOptions,
   getServerHandler: Function,
   log: any,
 }): express$Middleware => {
@@ -106,28 +106,36 @@ const getErrorHandler = ({ log }: DependencyContainer): express$Middleware => {
 };
 
 const getContextualisedMiddleware = (
-  handler: (context: GenericObject) => void
+  handler: (query: {}, body: {}, context: GenericObject) => void
 ): express$Middleware => (
   req: ExpressRequestWithContext,
   res: express$Response,
   next: express$NextFunction
-): void => handler(req._context);
+): void => {
+  handler({ _unsafe: req.params }, { _unsafe: req.body }, req._context);
+};
 
 const getContextualizedRouteMiddlewares = (
   routeMiddlewares: Array<(context: GenericObject) => void>
 ): express$Middleware => routeMiddlewares.map(mw => getContextualisedMiddleware(mw));
 
+const getNonFoundHandler = (): express$Middleware => {
+  return (req: ExpressRequestWithContext, res: express$Response, next: express$NextFunction) => {
+    req._context.resolveWithError(new NotFoundError());
+  };
+};
+
 const getEnhancedRouteMiddlewarePipe = ({
   serverRequestHooks,
   getServerHandler,
-
+  mainMiddleware,
   getRouteOptions,
   log,
-  specificRouteMiddlewares,
 }): Array<express$Middleware> => [
   addRequestContext({ getServerHandler, getRouteOptions, log }),
   ...(serverRequestHooks.pre ? getContextualizedRouteMiddlewares(serverRequestHooks.pre) : []),
-  ...getContextualizedRouteMiddlewares(specificRouteMiddlewares),
+  getContextualisedMiddleware(mainMiddleware),
+  getNonFoundHandler(),
   getErrorHandler(getServerHandler().getDepsContainer()),
 ];
 
@@ -138,8 +146,33 @@ const getEnhancedRouteInstance = (
   enhancedRouteHandlers,
   { expressRouter, serverRequestHooks, getServerHandler, log }
 ) => {
+  // console.log('enhancedRouteHandlers: ', enhancedRouteHandlers);
   const obj = {
-    ...enhancedRouteHandlers,
+    enhancedRouteHandlers,
+    compiledEnhancedRouteHandlers: {},
+    applyEnhancedRouteHandlers: function() {
+      enhancedRouteHandlers.forEach(erh => {
+        //  console.log('this is: ', this);
+        // console.log('process ERH: ', { [erh.name]: erh.handler });
+        this[erh.name] = (...args) => {
+          console.log('[' + erh.name + '] handler is: ', erh.handler, 'args:', args);
+          try {
+            const { handler } = erh;
+            // console.log('- this is: ', this);
+            // console.log('handler*: ', handler);
+            console.log('replace this[' + erh.name + ']');
+            this.compiledEnhancedRouteHandlers[erh.name] = handler.bind(this)(...args);
+            console.log('OK: ');
+          } catch (err) {
+            console.log('ERH ERROR: ', err);
+            return;
+          }
+
+          //  console.log('this is: ', this);
+          return this;
+        };
+      }, {});
+    },
     methodName,
     uri,
     expressRouter,
@@ -148,6 +181,7 @@ const getEnhancedRouteInstance = (
     _options: {},
 
     addRealExpressRoute: function(middlewares) {
+      console.log('add real express route: ', middlewares);
       return this.expressRouter[this.methodName].bind(this.expressRouter)(this.uri, ...middlewares);
     },
     setOptions: function(opts: {}) {
@@ -158,17 +192,87 @@ const getEnhancedRouteInstance = (
       return this._options;
     },
     resolve: async function() {
+      const finalNext = async (query, body, context, transform) => {
+        console.log('finalnext: ', query, body, transform);
+        //  ;
+        const result = await specificRouteMiddlewares.reduce(
+          (last, cur) => last.then(() => cur(query, body, context)),
+          Promise.resolve()
+        );
+        if (transform) {
+          return transform(result);
+        }
+        console.log('Result: ', result);
+        return result;
+      };
+
       const middlewares = getEnhancedRouteMiddlewarePipe({
         serverRequestHooks,
         getServerHandler,
         log,
-        specificRouteMiddlewares,
+        mainMiddleware: async (query, body, context) => {
+          const disableAutoFlush =
+            'disableAutoFlush' in this.getOptions() && this.getOptions().disableAutoFlush === true;
+
+          //  console.log('enhancedRouteHandlers.reduce starts:', [query, body, context]);
+          try {
+            const _x = await Object.keys(this.compiledEnhancedRouteHandlers).reduce(
+              (last, cur, idx) => {
+                return last.then(lastRes => {
+                  //      console.log('Last result was: ', lastRes);
+                  const params = lastRes || [query, body, context, null];
+                  /*        console.log(
+                    'Call handler "' +
+                      cur +
+                      '" (last: ' +
+                      (idx - 1 in enhancedRouteHandlers && enhancedRouteHandlers[idx - 1].name) +
+                      ') params: ',
+                   params
+                 ); */
+                  // console.log('New params are: ', params);
+
+                  console.log(
+                    'going to exec: ',
+                    cur,
+                    'params: ',
+                    params,
+                    'context currentUser:',
+                    params[2].currentUser
+                  );
+                  const result = this.compiledEnhancedRouteHandlers[cur].bind(this)(...params);
+                  console.log('reuslt is : ', { result });
+                  return result;
+                });
+              },
+
+              Promise.resolve()
+            );
+
+            console.log('_x:', _x);
+            const _r = await _x;
+            console.log('_r: ', _r);
+
+            const result = await finalNext(...(_r || [query, body, context, null]));
+            //  console.log('r2: ', result);
+
+            if (!disableAutoFlush) {
+              context.resolve(result);
+            }
+          } catch (err) {
+            return context.reject(err);
+          }
+        },
         getRouteOptions: () => this.getOptions(),
       });
 
+      /*
+
+*/
       return this.addRealExpressRoute(middlewares);
     },
   };
+  // console.log('obj is: ', obj);
+  obj.applyEnhancedRouteHandlers();
   return obj;
 };
 
@@ -268,12 +372,19 @@ const sendResponse = ({
   outputObj: any,
   log: any,
 }): void => {
-  log({ outputObj }, `sendResponse(HTTP ${httpStatusCode}): SEND OUTPUT`);
-  res.setHeader('Content-Type', responseContentType);
-  res
-    .status(httpStatusCode)
-    .json(outputObj)
-    .end();
+  console.log(
+    { outputObj, headersSent: res.headersSent },
+    `sendResponse(HTTP ${httpStatusCode}): SEND OUTPUT`
+  );
+  if (res.headersSent === false) {
+    res.setHeader('Content-Type', responseContentType);
+    res
+      .status(httpStatusCode)
+      .json(outputObj)
+      .end();
+  } else {
+    log({ res, httpStatusCode, outputObj }, 'sendResponse (HEADERS WERE ALREADY SENT!)');
+  }
 };
 
 module.exports = (depsContainer: DependencyContainer) => {
@@ -296,7 +407,7 @@ module.exports = (depsContainer: DependencyContainer) => {
     sendResponse,
   });
 
-  const enhancedRouteHandlers = {};
+  const enhancedRouteHandlers = [];
 
   const mainRouter = createRouter({
     getServerHandler: getServerHandlerForContext,
@@ -323,19 +434,17 @@ module.exports = (depsContainer: DependencyContainer) => {
     getDepsContainer: () => depsContainer,
     registerEnhancedRouteHandlers: (newRouteHandlers: {}) => {
       const entries = Object.entries(newRouteHandlers);
-      for (const [name, func] of entries) {
-        enhancedRouteHandlers[name] = func;
+      for (const [name, handler] of entries) {
+        enhancedRouteHandlers.push({ name, handler });
       }
     },
   };
 
   if (depsContainer.enhanceServerInstance) {
     // @todo: we need to find a way to affect getServerHandlerForContext() behavior efficiently
-    console.log('enhacing server instance');
+
     depsContainer.enhanceServerInstance.call(instance);
   }
-
-  console.log('final instance is. ', instance);
 
   return instance;
 };

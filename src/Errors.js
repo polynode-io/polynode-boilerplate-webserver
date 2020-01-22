@@ -38,31 +38,45 @@ class HTTPError extends Error {
 
 class BadRequestError extends HTTPError {
   constructor(message, expose = null) {
-    super(message, 400, expose);
+    super(message, 400, expose || { code: 'BadRequestError', message: 'Bad Request Error' });
   }
 }
 
 class UnauthorizedError extends HTTPError {
   constructor(message, expose = null) {
-    super(message, 401, expose);
+    super(message, 401, expose || { code: 'UnauthorizedError', message: 'Unauthorized Error' });
   }
 }
 
 class ForbiddenError extends HTTPError {
   constructor(message, expose = null) {
-    super(message, 403, expose);
+    super(message, 403, expose || { code: 'ForbiddenError', message: 'Forbidden Error' });
+  }
+}
+
+class NotFoundError extends HTTPError {
+  constructor(message, expose = null) {
+    super(message, 404, expose || { code: 'NotFoundError', message: 'Not Found Error' });
   }
 }
 
 class InternalServerError extends HTTPError {
   constructor(message, expose = null) {
-    super(message, 500, expose);
+    super(
+      message,
+      500,
+      expose || { code: 'InternalServerError', message: 'Internal Server Error' }
+    );
   }
 }
 
 class UnprocessableEntityError extends HTTPError {
   constructor(message, expose = null) {
-    super(message, 422, expose);
+    super(
+      message,
+      422,
+      expose || { code: 'UnprocessableEntityError', message: 'Unprocessable Entity Error' }
+    );
   }
 }
 
@@ -71,6 +85,7 @@ module.exports = {
   BadRequestError,
   UnauthorizedError,
   ForbiddenError,
+  NotFoundError,
   InternalServerError,
   UnprocessableEntityError,
 };
