@@ -63,6 +63,11 @@ type RequestHookDefinitions = {
   post?: Array<express$Middleware>,
 };
 
+const Constants = {
+  DEFAULT_SUCCESS_HTTP_STATUS_CODE: 200,
+  DEFAULT_ERROR_HTTP_STATUS_CODE: 500,
+};
+
 const addRequestContext = ({
   getServerHandler,
   getRouteOptions,
@@ -93,6 +98,24 @@ const addRequestContext = ({
   };
 };
 
+const resolveWithError = (
+  err: ApplicationErrorType,
+  responseContentType: string,
+  res: express$Response,
+  log: any
+) => {
+  const httpStatusCode = err.httpStatusCode || Constants.DEFAULT_ERROR_HTTP_STATUS_CODE;
+  const outputObj = ('expose' in err && err.expose != null && err.expose) || {};
+
+  return sendResponse({
+    httpStatusCode,
+    outputObj,
+    responseContentType,
+    log,
+    res,
+  });
+};
+
 const getErrorHandler = ({ log }: DependencyContainer): express$Middleware => {
   return (
     err: ApplicationErrorType,
@@ -100,8 +123,13 @@ const getErrorHandler = ({ log }: DependencyContainer): express$Middleware => {
     res: express$Response,
     next: express$NextFunction
   ): void => {
-    req._context.resolveWithError(err);
     req._context.log({ err }, 'Request error: ' + err.message, 'debug');
+    resolveWithError(
+      err,
+      req._context.getServerHandler().getConfig().defaultOutputContentType,
+      res,
+      log
+    );
   };
 };
 
@@ -119,9 +147,14 @@ const getContextualizedRouteMiddlewares = (
   routeMiddlewares: Array<(context: GenericObject) => void>
 ): express$Middleware => routeMiddlewares.map(mw => getContextualisedMiddleware(mw));
 
-const getNonFoundHandler = (): express$Middleware => {
+const getNonFoundHandler = ({ log }): express$Middleware => {
   return (req: ExpressRequestWithContext, res: express$Response, next: express$NextFunction) => {
-    req._context.resolveWithError(new NotFoundError());
+    resolveWithError(
+      new NotFoundError(),
+      req._context.getServerHandler().getConfig().defaultOutputContentType,
+      res,
+      log
+    );
   };
 };
 
@@ -135,7 +168,7 @@ const getEnhancedRouteMiddlewarePipe = ({
   addRequestContext({ getServerHandler, getRouteOptions, log }),
   ...(serverRequestHooks.pre ? getContextualizedRouteMiddlewares(serverRequestHooks.pre) : []),
   getContextualisedMiddleware(mainMiddleware),
-  getNonFoundHandler(),
+  getNonFoundHandler(getServerHandler().getDepsContainer()),
   getErrorHandler(getServerHandler().getDepsContainer()),
 ];
 
@@ -193,6 +226,9 @@ const getEnhancedRouteInstance = (
     },
     resolve: async function() {
       const finalNext = async (query, body, context, transform) => {
+        console.log('specificRouteMiddlewares: ', specificRouteMiddlewares);
+        // @todo : en el caso de que "cur" no sea una función (o mas bien se haga una excepcion)
+        // alertar de que hay una ruta mal configurada (apuntando hacia algo que no es una funcion)
         console.log('finalnext: ', query, body, transform);
         //  ;
         const result = await specificRouteMiddlewares.reduce(
@@ -318,6 +354,13 @@ const configureExpressApp = (app: express$Application<any>): void => {
   app.use(BodyParser.json());
   //
   app.use(cors());
+  /*
+  app.use(function(req, res, next) {
+    res.header('Access-Control-Allow-Origin', 'camperalia.com'); // update to match the domain you will make the request from
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+  });
+  */
 };
 
 const createRouter = ({
@@ -372,19 +415,11 @@ const sendResponse = ({
   outputObj: any,
   log: any,
 }): void => {
-  console.log(
-    { outputObj, headersSent: res.headersSent },
-    `sendResponse(HTTP ${httpStatusCode}): SEND OUTPUT`
-  );
-  if (res.headersSent === false) {
-    res.setHeader('Content-Type', responseContentType);
-    res
-      .status(httpStatusCode)
-      .json(outputObj)
-      .end();
-  } else {
-    log({ res, httpStatusCode, outputObj }, 'sendResponse (HEADERS WERE ALREADY SENT!)');
-  }
+  res.setHeader('Content-Type', responseContentType);
+  res
+    .status(httpStatusCode)
+    .json(outputObj)
+    .end();
 };
 
 module.exports = (depsContainer: DependencyContainer) => {
