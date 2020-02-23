@@ -37,6 +37,9 @@ const RequestContext = require('./RequestContext');
 
 const { NotFoundError } = require('./Errors');
 
+const ROUTE_METHODS = ['get', 'post', 'patch', 'delete', 'put', 'all'];
+const ROUTE_METHODS_CORS_NON_COMPLEX = ['get', 'head', 'post'];
+
 type GenericObject = { [key: string]: any };
 
 type ApplicationErrorType = {
@@ -215,7 +218,16 @@ const getEnhancedRouteInstance = (
 
     addRealExpressRoute: function(middlewares) {
       console.log('add real express route: ', middlewares);
-      return this.expressRouter[this.methodName].bind(this.expressRouter)(this.uri, ...middlewares);
+      const mainResult = this.expressRouter[this.methodName].bind(this.expressRouter)(
+        this.uri,
+        ...middlewares
+      );
+
+      if (isComplexCorsMethod(this.methodName)) {
+        this.expressRouter.options.bind(this.expressRouter)(this.uri, cors());
+      }
+
+      return mainResult;
     },
     setOptions: function(opts: {}) {
       this._options = { ...this._options, ...opts };
@@ -312,6 +324,9 @@ const getEnhancedRouteInstance = (
   return obj;
 };
 
+const isComplexCorsMethod = (methodName: string) =>
+  methodName in ROUTE_METHODS_CORS_NON_COMPLEX === false;
+
 const getBypassedRouterMethods = ({
   expressRouter,
   getServerHandler,
@@ -325,9 +340,7 @@ const getBypassedRouterMethods = ({
   enhancedRouteHandlers: {},
   log: any,
 }): express$Router<any> => {
-  const methods = ['get', 'post', 'patch', 'delete', 'put', 'all'];
-
-  return methods.reduce((res, methodName) => {
+  return ROUTE_METHODS.reduce((res, methodName) => {
     res[methodName] = (
       uri: string,
       ...specificRouteMiddlewares: ApplicationRouteFunction
@@ -335,7 +348,9 @@ const getBypassedRouterMethods = ({
       return getEnhancedRouteInstance(
         methodName,
         uri,
-        specificRouteMiddlewares,
+        isComplexCorsMethod(methodName)
+          ? [cors(), ...specificRouteMiddlewares]
+          : specificRouteMiddlewares,
         enhancedRouteHandlers,
         {
           getServerHandler,
