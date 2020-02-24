@@ -71,6 +71,21 @@ const Constants = {
   DEFAULT_ERROR_HTTP_STATUS_CODE: 500,
 };
 
+const CORS_OPTIONS = {
+  origin: (req, origin, callback) => {
+    const allowedByCors = true;
+
+    if (allowedByCors) {
+      callback(null, true);
+    } else {
+      callback(new Error(`${origin} not allowed by CORS`));
+    }
+  },
+  credentials: true,
+};
+
+const enableCors = () => cors(CORS_OPTIONS);
+
 const addRequestContext = ({
   getServerHandler,
   getRouteOptions,
@@ -224,7 +239,7 @@ const getEnhancedRouteInstance = (
       );
 
       if (isComplexCorsMethod(this.methodName)) {
-        this.expressRouter.options.bind(this.expressRouter)(this.uri, cors());
+        this.expressRouter.options.bind(this.expressRouter)(this.uri, enableCors());
       }
 
       return mainResult;
@@ -349,7 +364,7 @@ const getBypassedRouterMethods = ({
         methodName,
         uri,
         isComplexCorsMethod(methodName)
-          ? [cors(), ...specificRouteMiddlewares]
+          ? [enableCors(), ...specificRouteMiddlewares]
           : specificRouteMiddlewares,
         enhancedRouteHandlers,
         {
@@ -368,7 +383,7 @@ const getBypassedRouterMethods = ({
 const configureExpressApp = (app: express$Application<any>): void => {
   app.use(BodyParser.json());
   //
-  app.use(cors());
+  app.use(enableCors());
   /*
   app.use(function(req, res, next) {
     res.header('Access-Control-Allow-Origin', 'camperalia.com'); // update to match the domain you will make the request from
