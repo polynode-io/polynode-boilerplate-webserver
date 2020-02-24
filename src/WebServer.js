@@ -81,7 +81,6 @@ const CORS_OPTIONS = {
       callback(new Error(`${origin} not allowed by CORS`));
     }
   },
-  credentials: true,
 };
 
 const enableCors = () => cors(CORS_OPTIONS);
@@ -364,7 +363,10 @@ const getBypassedRouterMethods = ({
         methodName,
         uri,
         isComplexCorsMethod(methodName)
-          ? [enableCors(), ...specificRouteMiddlewares]
+          ? [
+              context => enableCors()(context.req, context.res, context.next),
+              ...specificRouteMiddlewares,
+            ]
           : specificRouteMiddlewares,
         enhancedRouteHandlers,
         {
@@ -382,7 +384,6 @@ const getBypassedRouterMethods = ({
 
 const configureExpressApp = (app: express$Application<any>): void => {
   app.use(BodyParser.json());
-  //
   app.use(enableCors());
   /*
   app.use(function(req, res, next) {
