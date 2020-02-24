@@ -364,7 +364,8 @@ const getBypassedRouterMethods = ({
         uri,
         isComplexCorsMethod(methodName)
           ? [
-              (query, body, context) => enableCors()(context.req, context.res, context.next),
+              (query, body, context) =>
+                enableCors()(context.getRequest(), context.getResponse(), () => context.next()),
               ...specificRouteMiddlewares,
             ]
           : specificRouteMiddlewares,
