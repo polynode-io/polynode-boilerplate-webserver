@@ -72,7 +72,7 @@ const Constants = {
 };
 
 const CORS_OPTIONS = {
-  origin: (req, origin, callback) => {
+  origin: (origin, callback) => {
     const allowedByCors = true;
 
     if (allowedByCors) {
