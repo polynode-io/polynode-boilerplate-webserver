@@ -392,7 +392,7 @@ const getBypassedRouterMethods = ({
 };
 
 const configureExpressApp = (app: express$Application<any>): void => {
-  app.use(BodyParser.json());
+  app.use(BodyParser.json({ limit: '50mb' }));
   app.use(enableCors());
   /*
   app.use(function(req, res, next) {
