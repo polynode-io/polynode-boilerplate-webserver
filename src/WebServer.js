@@ -189,6 +189,19 @@ const getEnhancedRouteMiddlewarePipe = ({
   getErrorHandler(getServerHandler().getDepsContainer()),
 ];
 
+const corsMiddleware = (query, body, context) => {
+  console.log('inside corsMiddleware');
+  console.log('* query is: ', query);
+  console.log('* context is: ', context);
+
+  return new Promise((resolve, reject) => {
+    enableCors()(context.getRequest(), context.getResponse(), () => {
+      console.log('on next (cors)');
+      resolve(true);
+    });
+  });
+};
+
 const getEnhancedRouteInstance = (
   methodName,
   uri,
@@ -231,15 +244,14 @@ const getEnhancedRouteInstance = (
     _options: {},
 
     addRealExpressRoute: function(middlewares) {
-      console.log('add real express route: ', middlewares);
-      const mainResult = this.expressRouter[this.methodName].bind(this.expressRouter)(
-        this.uri,
-        ...middlewares
-      );
+      console.log('add real express route(X): ', middlewares);
+      const binderFunc = this.expressRouter[this.methodName].bind(this.expressRouter);
 
-      if (isComplexCorsMethod(this.methodName)) {
-        this.expressRouter.options.bind(this.expressRouter)(this.uri, enableCors());
-      }
+      const middlewaresToBind = isComplexCorsMethod(this.methodName)
+        ? [enableCors(), ...middlewares]
+        : middlewares;
+
+      const mainResult = binderFunc(this.uri, ...middlewaresToBind);
 
       return mainResult;
     },
@@ -363,16 +375,7 @@ const getBypassedRouterMethods = ({
         methodName,
         uri,
         isComplexCorsMethod(methodName)
-          ? [
-              (query, body, context) =>
-                new Promise((resolve, reject) => {
-                  enableCors()(context.getRequest(), context.getResponse(), () => {
-                    console.log('on next (cors)');
-                    resolve(true);
-                  });
-                }),
-              ...specificRouteMiddlewares,
-            ]
+          ? [corsMiddleware, ...specificRouteMiddlewares]
           : specificRouteMiddlewares,
         enhancedRouteHandlers,
         {
