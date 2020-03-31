@@ -81,6 +81,7 @@ const CORS_OPTIONS = {
       callback(new Error(`${origin} not allowed by CORS`));
     }
   },
+  exposedHeaders: ['X-Auth-Refresh-In'], // @todo : move this logic to Configuration (project-dependent)
 };
 
 const enableCors = () => cors(CORS_OPTIONS);
@@ -190,13 +191,8 @@ const getEnhancedRouteMiddlewarePipe = ({
 ];
 
 const corsMiddleware = (query, body, context) => {
-  console.log('inside corsMiddleware');
-  console.log('* query is: ', query);
-  console.log('* context is: ', context);
-
   return new Promise((resolve, reject) => {
     enableCors()(context.getRequest(), context.getResponse(), () => {
-      console.log('on next (cors)');
       resolve(true);
     });
   });
@@ -218,14 +214,14 @@ const getEnhancedRouteInstance = (
         //  console.log('this is: ', this);
         // console.log('process ERH: ', { [erh.name]: erh.handler });
         this[erh.name] = (...args) => {
-          console.log('[' + erh.name + '] handler is: ', erh.handler, 'args:', args);
+          //      console.log('[' + erh.name + '] handler is: ', erh.handler, 'args:', args);
           try {
             const { handler } = erh;
             // console.log('- this is: ', this);
             // console.log('handler*: ', handler);
-            console.log('replace this[' + erh.name + ']');
+            //    console.log('replace this[' + erh.name + ']');
             this.compiledEnhancedRouteHandlers[erh.name] = handler.bind(this)(...args);
-            console.log('OK: ');
+            //      console.log('OK: ');
           } catch (err) {
             console.log('ERH ERROR: ', err);
             return;
@@ -244,7 +240,7 @@ const getEnhancedRouteInstance = (
     _options: {},
 
     addRealExpressRoute: function(middlewares) {
-      console.log('add real express route(X): ', middlewares);
+      //    console.log('add real express route(X): ', middlewares);
       const binderFunc = this.expressRouter[this.methodName].bind(this.expressRouter);
 
       const middlewaresToBind = isComplexCorsMethod(this.methodName)
@@ -264,10 +260,10 @@ const getEnhancedRouteInstance = (
     },
     resolve: async function() {
       const finalNext = async (query, body, context, transform) => {
-        console.log('specificRouteMiddlewares: ', specificRouteMiddlewares);
+        //    console.log('specificRouteMiddlewares: ', specificRouteMiddlewares);
         // @todo : en el caso de que "cur" no sea una función (o mas bien se haga una excepcion)
         // alertar de que hay una ruta mal configurada (apuntando hacia algo que no es una funcion)
-        console.log('finalnext: ', query, body, transform);
+        //  console.log('finalnext: ', query, body, transform);
         //  ;
         const result = await specificRouteMiddlewares.reduce(
           (last, cur) => last.then(() => cur(query, body, context)),
@@ -276,7 +272,7 @@ const getEnhancedRouteInstance = (
         if (transform) {
           return transform(result);
         }
-        console.log('Result: ', result);
+        //    console.log('Result: ', result);
         return result;
       };
 
@@ -305,7 +301,7 @@ const getEnhancedRouteInstance = (
                  ); */
                   // console.log('New params are: ', params);
 
-                  console.log(
+                  /*          console.log(
                     'going to exec: ',
                     cur,
                     'params: ',
@@ -313,8 +309,9 @@ const getEnhancedRouteInstance = (
                     'context currentUser:',
                     params[2].currentUser
                   );
+                  */
                   const result = this.compiledEnhancedRouteHandlers[cur].bind(this)(...params);
-                  console.log('reuslt is : ', { result });
+                  // console.log('reuslt is : ', { result });
                   return result;
                 });
               },
@@ -322,9 +319,9 @@ const getEnhancedRouteInstance = (
               Promise.resolve()
             );
 
-            console.log('_x:', _x);
+            //            console.log('_x:', _x);
             const _r = await _x;
-            console.log('_r: ', _r);
+            //          console.log('_r: ', _r);
 
             const result = await finalNext(...(_r || [query, body, context, null]));
             //  console.log('r2: ', result);
